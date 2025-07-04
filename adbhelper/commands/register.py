@@ -240,9 +240,11 @@ def register_commands(main_group):
             console.print(f"[red]Error: {e}[/red]")
     
     @add_device.command('pair')
+    @click.argument('address', required=False)
+    @click.argument('pairing_code', required=False)
     @click.option('-d', '--discover', is_flag=True, help='Discover devices ready for pairing')
     @click.pass_context
-    def pair(ctx, discover):
+    def pair(ctx, address, pairing_code, discover):
         """Pair a device using WiFi (manual pairing)"""
         device_manager = ctx.obj['device_manager']
         
@@ -265,16 +267,30 @@ def register_commands(main_group):
             else:
                 ip_port = None
             
+            # Handle command line arguments
+            if address:
+                ip_port = address
+            else:
+                ip_port = None
+            
             console.print("[bold]Manual WiFi Pairing[/bold]\n")
             console.print("Follow these steps on your Android device:")
             console.print("1. Go to Settings → Developer Options → Wireless debugging")
             console.print("2. Tap 'Pair device with pairing code'")
             console.print("3. Note the IP address, port, and 6-digit code shown\n")
             
+            # If no address provided at all, ask for it
             if not ip_port:
-                ip_port = Prompt.ask("Enter the pairing address (IP:port)")
+                ip_port = Prompt.ask("Enter the pairing address (IP:port or just IP)")
             
-            pairing_code = Prompt.ask("Enter the 6-digit pairing code")
+            # If IP provided without port, ask for port
+            if ':' not in ip_port:
+                port = Prompt.ask("Enter the pairing port")
+                ip_port = f"{ip_port}:{port}"
+            
+            # If no pairing code provided, ask for it
+            if not pairing_code:
+                pairing_code = Prompt.ask("Enter the 6-digit pairing code")
             
             console.print(f"\n[yellow]Attempting to pair with {ip_port}...[/yellow]")
             
@@ -282,8 +298,30 @@ def register_commands(main_group):
             
             if success:
                 console.print(f"[green]✓ Successfully paired![/green]")
-                console.print("\nTo connect to the device, use:")
-                console.print(f"[cyan]adbh connect {ip_port.split(':')[0]}:5555[/cyan]")
+                
+                # Ask if user wants to connect now
+                if Prompt.ask("\nConnect to the device now?", choices=["y", "n"], default="y") == "y":
+                    console.print("\n[bold]Note:[/bold] The connection port is different from the pairing port.")
+                    console.print("Check your device's Wireless debugging screen for the IP address and port.\n")
+                    
+                    connect_port = Prompt.ask("Enter the connection port", default="5555")
+                    connect_ip = f"{ip_port.split(':')[0]}:{connect_port}"
+                    
+                    console.print(f"\n[yellow]Connecting to {connect_ip}...[/yellow]")
+                    
+                    stdout, stderr, code = device_manager.adb._run_command(["connect", connect_ip])
+                    
+                    if code == 0 and "connected" in stdout.lower():
+                        console.print(f"[green]✓ Successfully connected to {connect_ip}![/green]")
+                        console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
+                    else:
+                        console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
+                        console.print(f"\nYou can try connecting manually with:")
+                        console.print(f"[cyan]adbh add-device wireless {ip_port.split(':')[0]}:<port>[/cyan]")
+                else:
+                    console.print("\nTo connect to the device later, use:")
+                    console.print(f"[cyan]adbh add-device wireless {ip_port.split(':')[0]}:<port>[/cyan]")
+                    console.print("(Check your device's Wireless debugging screen for the port)")
             else:
                 console.print(f"[red]✗ Pairing failed: {message}[/red]")
                 console.print("\nTroubleshooting:")
