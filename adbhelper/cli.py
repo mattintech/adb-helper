@@ -366,6 +366,421 @@ def record(ctx, time, device):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
 
+@main.group(name='log', invoke_without_command=True)
+@click.pass_context
+def log(ctx):
+    """View and manage device logs (logcat)"""
+    if ctx.invoked_subcommand is None:
+        # Show available options when no subcommand is provided
+        console.print("\n[bold]Log Options:[/bold]\n")
+        console.print("  [cyan]adbh log view[/cyan]    - View live device logs")
+        console.print("  [cyan]adbh log dump[/cyan]    - Dump current logs and exit")
+        console.print("  [cyan]adbh log clear[/cyan]   - Clear device logs\n")
+        console.print("Use [cyan]adbh log --help[/cyan] for more information")
+
+@log.command('view')
+@click.option('-f', '--filter', multiple=True, help='Filter log output (can be used multiple times)')
+@click.option('-s', '--save', is_flag=True, help='Save log output to file')
+@click.option('--device', help='Target device ID (skip all selection prompts)')
+@click.pass_context
+def log_view(ctx, filter, save, device):
+    """View live device logs"""
+    device_manager = ctx.obj['device_manager']
+    
+    try:
+        devices = device_manager.list_devices()
+        if not devices:
+            console.print("[yellow]No devices found[/yellow]")
+            return
+        
+        # If specific device is provided, use it
+        if device:
+            # Verify device exists
+            if not any(d['id'] == device for d in devices):
+                console.print(f"[red]Device {device} not found[/red]")
+                return
+            target_devices = [device]
+        else:
+            # Interactive device selection
+            from rich.prompt import Prompt
+            
+            if len(devices) == 1:
+                # Only one device, use it
+                target_devices = [devices[0]['id']]
+                console.print(f"Using device: [green]{devices[0]['id']}[/green] ({devices[0].get('model', 'Unknown')})")
+            else:
+                # Multiple devices - ask for mode
+                console.print("\n[bold]Device Selection:[/bold]")
+                console.print("1. Single device")
+                console.print("2. Multiple devices")
+                console.print("3. All devices\n")
+                
+                mode = Prompt.ask("Select mode", choices=["1", "2", "3"], default="1")
+                
+                if mode == "1":
+                    # Single device selection
+                    device_id = device_manager.select_device(None)
+                    if not device_id:
+                        return
+                    target_devices = [device_id]
+                    
+                elif mode == "2":
+                    # Multiple device selection
+                    console.print("\n[bold]Select devices (comma-separated numbers):[/bold]")
+                    for i, dev in enumerate(devices, 1):
+                        console.print(f"{i}. {dev['id']} ({dev.get('model', 'Unknown')})")
+                    
+                    selections = Prompt.ask("\nDevices to use").split(',')
+                    target_devices = []
+                    
+                    for sel in selections:
+                        try:
+                            idx = int(sel.strip()) - 1
+                            if 0 <= idx < len(devices):
+                                target_devices.append(devices[idx]['id'])
+                            else:
+                                console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                        except ValueError:
+                            console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                    
+                    if not target_devices:
+                        console.print("[red]No valid devices selected[/red]")
+                        return
+                        
+                else:  # mode == "3"
+                    # All devices
+                    target_devices = [d['id'] for d in devices]
+                    console.print(f"[green]Using all {len(devices)} device(s)[/green]")
+        
+        # Handle multi-device mode
+        if len(target_devices) > 1:
+            devices = device_manager.list_devices()
+            if not devices:
+                console.print("[yellow]No devices found[/yellow]")
+                return
+            
+            console.print(f"[green]Launching logs for {len(target_devices)} device(s)...[/green]")
+            
+            for device_id in target_devices:
+                # Launch new terminal window for each device
+                import platform
+                import sys
+                
+                # Build command for new window
+                cmd_args = [sys.executable, "-m", "adbhelper.cli", "log", "view", "--device", device_id]
+                
+                if save:
+                    cmd_args.append("--save")
+                for f in filter:
+                    cmd_args.extend(["--filter", f])
+                
+                if platform.system() == "Darwin":  # macOS
+                    terminal_cmd = [
+                        "osascript", "-e",
+                        f'tell app "Terminal" to do script "{" ".join(cmd_args)}"'
+                    ]
+                elif platform.system() == "Linux":
+                    terminal_cmd = ["gnome-terminal", "--", *cmd_args]
+                elif platform.system() == "Windows":
+                    terminal_cmd = ["cmd", "/c", "start", "cmd", "/k", *cmd_args]
+                else:
+                    console.print("[red]Multi-device mode not supported on this platform[/red]")
+                    return
+                
+                subprocess.Popen(terminal_cmd)
+            
+            return
+        
+        # Single device mode
+        device_id = target_devices[0]
+        
+        
+        # Build logcat command
+        logcat_args = ["-s", device_id, "logcat"]
+        
+        
+        # Setup file saving if requested
+        log_file = None
+        if save:
+            import os
+            from datetime import datetime
+            
+            # Create logs directory
+            logs_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Create filename with timestamp and device ID
+            now = datetime.now()
+            timestamp = now.strftime("%Y%m%d_%H%M%S")
+            # Sanitize device ID for filename
+            safe_device_id = device_id.replace(":", "-").replace(".", "_")
+            filename = f"logcat_{safe_device_id}_{timestamp}.log"
+            filepath = os.path.join(logs_dir, filename)
+            
+            log_file = open(filepath, 'w')
+            console.print(f"[green]✓ Saving log to: {filepath}[/green]")
+        
+        # Live mode
+        console.print(f"[yellow]Starting live log view...[/yellow]")
+        console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+        
+        try:
+            # Start logcat process
+            process = subprocess.Popen(
+                [device_manager.adb.adb_path] + logcat_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            # Process output line by line
+            for line in process.stdout:
+                # Apply filter if any
+                if filter:
+                    if len(filter) == 1:
+                        if filter[0] not in line:
+                            continue
+                    else:
+                        import re
+                        pattern = re.compile('|'.join(f"({re.escape(f)})" for f in filter))
+                        if not pattern.search(line):
+                            continue
+                
+                # Output to console and file
+                console.print(line.rstrip())
+                if log_file:
+                    log_file.write(line)
+                    log_file.flush()  # Ensure it's written immediately
+            
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Log viewing stopped[/yellow]")
+            process.terminate()
+        finally:
+            if log_file:
+                log_file.close()
+        
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+@log.command('dump')
+@click.option('-f', '--filter', multiple=True, help='Filter log output (can be used multiple times)')
+@click.option('-s', '--save', is_flag=True, help='Save log output to file')
+@click.option('--device', help='Target device ID (skip all selection prompts)')
+@click.pass_context
+def log_dump(ctx, filter, save, device):
+    """Dump current device logs and exit"""
+    device_manager = ctx.obj['device_manager']
+    
+    try:
+        devices = device_manager.list_devices()
+        if not devices:
+            console.print("[yellow]No devices found[/yellow]")
+            return
+        
+        # If specific device is provided, use it
+        if device:
+            # Verify device exists
+            if not any(d['id'] == device for d in devices):
+                console.print(f"[red]Device {device} not found[/red]")
+                return
+            target_devices = [device]
+        else:
+            # Interactive device selection
+            from rich.prompt import Prompt
+            
+            if len(devices) == 1:
+                # Only one device, use it
+                target_devices = [devices[0]['id']]
+                console.print(f"Using device: [green]{devices[0]['id']}[/green] ({devices[0].get('model', 'Unknown')})")
+            else:
+                # Multiple devices - ask for mode
+                console.print("\n[bold]Device Selection:[/bold]")
+                console.print("1. Single device")
+                console.print("2. Multiple devices")
+                console.print("3. All devices\n")
+                
+                mode = Prompt.ask("Select mode", choices=["1", "2", "3"], default="1")
+                
+                if mode == "1":
+                    # Single device selection
+                    device_id = device_manager.select_device(None)
+                    if not device_id:
+                        return
+                    target_devices = [device_id]
+                    
+                elif mode == "2":
+                    # Multiple device selection
+                    console.print("\n[bold]Select devices (comma-separated numbers):[/bold]")
+                    for i, dev in enumerate(devices, 1):
+                        console.print(f"{i}. {dev['id']} ({dev.get('model', 'Unknown')})")
+                    
+                    selections = Prompt.ask("\nDevices to use").split(',')
+                    target_devices = []
+                    
+                    for sel in selections:
+                        try:
+                            idx = int(sel.strip()) - 1
+                            if 0 <= idx < len(devices):
+                                target_devices.append(devices[idx]['id'])
+                            else:
+                                console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                        except ValueError:
+                            console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                    
+                    if not target_devices:
+                        console.print("[red]No valid devices selected[/red]")
+                        return
+                        
+                else:  # mode == "3"
+                    # All devices
+                    target_devices = [d['id'] for d in devices]
+                    console.print(f"[green]Using all {len(devices)} device(s)[/green]")
+        
+        # Process each device
+        for device_id in target_devices:
+            if len(target_devices) > 1:
+                console.print(f"\n[bold]Device: {device_id}[/bold]")
+            
+            # Setup file saving if requested
+            log_file = None
+            if save:
+                import os
+                from datetime import datetime
+                
+                # Create logs directory
+                logs_dir = os.path.join(os.getcwd(), "logs")
+                os.makedirs(logs_dir, exist_ok=True)
+                
+                # Create filename with timestamp and device ID
+                now = datetime.now()
+                timestamp = now.strftime("%Y%m%d_%H%M%S")
+                # Sanitize device ID for filename
+                safe_device_id = device_id.replace(":", "-").replace(".", "_")
+                filename = f"logcat_{safe_device_id}_{timestamp}_dump.log"
+                filepath = os.path.join(logs_dir, filename)
+                
+                log_file = open(filepath, 'w')
+                console.print(f"[green]✓ Saving log to: {filepath}[/green]")
+            
+            # Dump mode - get all at once
+            console.print("[yellow]Dumping current log...[/yellow]")
+            process = subprocess.run(
+                [device_manager.adb.adb_path, "-s", device_id, "logcat", "-d"],
+                capture_output=True,
+                text=True
+            )
+            
+            output = process.stdout
+            
+            # Apply filters if any
+            if filter and output:
+                import re
+                lines = output.split('\n')
+                if len(filter) == 1:
+                    filtered_lines = [line for line in lines if filter[0] in line]
+                else:
+                    pattern = re.compile('|'.join(f"({re.escape(f)})" for f in filter))
+                    filtered_lines = [line for line in lines if pattern.search(line)]
+                output = '\n'.join(filtered_lines)
+            
+            # Output to console and/or file
+            if output:
+                if not save:  # Only print to console if not saving
+                    console.print(output)
+                if log_file:
+                    log_file.write(output)
+                    log_file.close()
+                    console.print(f"[green]✓ Log dump complete[/green]")
+            else:
+                console.print("[yellow]No log entries found[/yellow]")
+                if log_file:
+                    log_file.close()
+                    
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+@log.command('clear')
+@click.option('--device', help='Target device ID (skip all selection prompts)')
+@click.pass_context
+def log_clear(ctx, device):
+    """Clear device logs"""
+    device_manager = ctx.obj['device_manager']
+    
+    try:
+        devices = device_manager.list_devices()
+        if not devices:
+            console.print("[yellow]No devices found[/yellow]")
+            return
+        
+        # If specific device is provided, use it
+        if device:
+            # Verify device exists
+            if not any(d['id'] == device for d in devices):
+                console.print(f"[red]Device {device} not found[/red]")
+                return
+            target_devices = [device]
+        else:
+            # Interactive device selection
+            from rich.prompt import Prompt
+            
+            if len(devices) == 1:
+                # Only one device, use it
+                target_devices = [devices[0]['id']]
+                console.print(f"Using device: [green]{devices[0]['id']}[/green] ({devices[0].get('model', 'Unknown')})")
+            else:
+                # Multiple devices - ask for mode
+                console.print("\n[bold]Device Selection:[/bold]")
+                console.print("1. Single device")
+                console.print("2. Multiple devices")
+                console.print("3. All devices\n")
+                
+                mode = Prompt.ask("Select mode", choices=["1", "2", "3"], default="1")
+                
+                if mode == "1":
+                    # Single device selection
+                    device_id = device_manager.select_device(None)
+                    if not device_id:
+                        return
+                    target_devices = [device_id]
+                    
+                elif mode == "2":
+                    # Multiple device selection
+                    console.print("\n[bold]Select devices (comma-separated numbers):[/bold]")
+                    for i, dev in enumerate(devices, 1):
+                        console.print(f"{i}. {dev['id']} ({dev.get('model', 'Unknown')})")
+                    
+                    selections = Prompt.ask("\nDevices to use").split(',')
+                    target_devices = []
+                    
+                    for sel in selections:
+                        try:
+                            idx = int(sel.strip()) - 1
+                            if 0 <= idx < len(devices):
+                                target_devices.append(devices[idx]['id'])
+                            else:
+                                console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                        except ValueError:
+                            console.print(f"[yellow]Skipping invalid selection: {sel}[/yellow]")
+                    
+                    if not target_devices:
+                        console.print("[red]No valid devices selected[/red]")
+                        return
+                        
+                else:  # mode == "3"
+                    # All devices
+                    target_devices = [d['id'] for d in devices]
+                    console.print(f"[green]Using all {len(devices)} device(s)[/green]")
+        
+        # Clear logs for each device
+        for device_id in target_devices:
+            console.print(f"[yellow]Clearing log for {device_id}...[/yellow]")
+            device_manager.adb._run_command(["-s", device_id, "logcat", "-c"])
+            console.print(f"[green]✓ Log cleared for {device_id}[/green]")
+            
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
 @main.command()
 @click.option('-d', '--device', help='Device to disconnect (defaults to selection prompt)')
 @click.pass_context
