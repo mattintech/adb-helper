@@ -645,6 +645,8 @@ def register_commands(main_group):
     # Register capture and log command groups
     from .capture_commands import register_capture_commands
     from .log_commands import register_log_commands
+    from .app_commands import register_app_commands
     
     register_capture_commands(main_group)
     register_log_commands(main_group)
+    register_app_commands(main_group)
