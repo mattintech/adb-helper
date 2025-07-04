@@ -40,10 +40,31 @@ A powerful cross-platform ADB (Android Debug Bridge) helper tool that simplifies
 
 ## Installation
 
+### For Users
+
+Install the latest stable version from PyPI:
+
+```bash
+pip install adbh
+```
+
+After installation, you can use either `adbh` or `adbhelper` command:
+
+```bash
+adbh --help
+adbhelper --help
+```
+
+### For Developers
+
 ```bash
 # Clone the repository
 git clone https://github.com/mattintech/adb-helper.git
+<<<<<<< HEAD
 cd adbhelper
+=======
+cd adb-helper
+>>>>>>> 854ec7e (updating user docs)
 
 # Create virtual environment
 python3 -m venv venv
@@ -56,6 +77,29 @@ source venv/bin/activate
 
 # Install in development mode
 pip install -e .
+
+# (Optional) Install development dependencies
+pip install -e ".[dev]"
+```
+
+## Requirements
+
+- Python 3.8 or higher
+- ADB (Android Debug Bridge) installed and in PATH
+  - Install via Android SDK Platform Tools
+  - Or use package managers: `brew install android-platform-tools` (macOS), `apt install adb` (Ubuntu)
+
+## Updating
+
+### For Users
+```bash
+pip install --upgrade adbh
+```
+
+### For Developers
+```bash
+git pull origin main
+pip install --upgrade -e .
 ```
 
 ## Quick Start
