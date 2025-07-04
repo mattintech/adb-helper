@@ -91,8 +91,17 @@ class DeviceManager:
         if not device_id:
             raise ADBError("No device selected")
         
+        # Get user-defined device name from settings
+        try:
+            stdout, stderr, code = self.adb._run_command(["-s", device_id, "shell", "settings get global device_name"])
+            device_name = stdout.strip() if code == 0 and stdout.strip() != "null" else None
+        except:
+            device_name = None
+        
         info = {
             "id": device_id,
+            "device_name": device_name,
+            "serial": self.adb.get_device_property("ro.serialno", device_id),
             "manufacturer": self.adb.get_device_property("ro.product.manufacturer", device_id),
             "model": self.adb.get_device_property("ro.product.model", device_id),
             "android_version": self.adb.get_device_property("ro.build.version.release", device_id),

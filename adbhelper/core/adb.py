@@ -46,6 +46,26 @@ class ADBWrapper:
         except Exception as e:
             raise ADBError(f"Failed to run ADB command: {e}")
     
+    def _run_command_async(self, args: List[str], device_id: Optional[str] = None) -> subprocess.Popen:
+        """Run an ADB command asynchronously and return the process"""
+        cmd = [self.adb_path]
+        
+        if device_id:
+            cmd.extend(["-s", device_id])
+            
+        cmd.extend(args)
+        
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return process
+        except Exception as e:
+            raise ADBError(f"Failed to run ADB command: {e}")
+    
     def get_devices(self) -> List[dict]:
         """Get list of connected devices"""
         stdout, stderr, code = self._run_command(["devices", "-l"])
@@ -71,8 +91,17 @@ class ADBWrapper:
                     "status": status,
                     "model": None,
                     "device": None,
-                    "transport_id": None
+                    "transport_id": None,
+                    "transport_type": None
                 }
+                
+                # Determine transport type based on device ID format
+                if ':' in device_id and '.' in device_id:
+                    # IP:port format indicates WiFi connection
+                    device_info["transport_type"] = "WiFi"
+                else:
+                    # Otherwise it's USB
+                    device_info["transport_type"] = "USB"
                 
                 # Extract additional properties
                 for part in parts[2:]:
@@ -124,5 +153,35 @@ class ADBWrapper:
         try:
             stdout, stderr, code = self._run_command(["version"])
             return code == 0
+        except:
+            return False
+    
+    def get_version(self) -> Optional[str]:
+        """Get ADB version number"""
+        try:
+            stdout, stderr, code = self._run_command(["version"])
+            if code == 0:
+                # Parse version from output like "Android Debug Bridge version 1.0.41\nVersion 34.0.4-10411341"
+                lines = stdout.strip().split('\n')
+                for line in lines:
+                    if "Version" in line and not "Bridge" in line:
+                        # Extract version number like "34.0.4-10411341"
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            return parts[1].split('-')[0]  # Return "34.0.4"
+            return None
+        except:
+            return None
+    
+    def supports_pairing(self) -> bool:
+        """Check if ADB version supports wireless pairing (30.0.0+)"""
+        version = self.get_version()
+        if not version:
+            return False
+        
+        try:
+            # Parse version like "34.0.4" to compare
+            major = int(version.split('.')[0])
+            return major >= 30
         except:
             return False

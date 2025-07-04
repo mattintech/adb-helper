@@ -50,6 +50,7 @@ screenshots/
 recordings/
 logs/
 .adbhelper/
+.adbhelper_history.json
 
 # Test files
 test_*.py
