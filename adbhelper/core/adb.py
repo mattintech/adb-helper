@@ -135,3 +135,33 @@ class ADBWrapper:
             return code == 0
         except:
             return False
+    
+    def get_version(self) -> Optional[str]:
+        """Get ADB version number"""
+        try:
+            stdout, stderr, code = self._run_command(["version"])
+            if code == 0:
+                # Parse version from output like "Android Debug Bridge version 1.0.41\nVersion 34.0.4-10411341"
+                lines = stdout.strip().split('\n')
+                for line in lines:
+                    if "Version" in line and not "Bridge" in line:
+                        # Extract version number like "34.0.4-10411341"
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            return parts[1].split('-')[0]  # Return "34.0.4"
+            return None
+        except:
+            return None
+    
+    def supports_pairing(self) -> bool:
+        """Check if ADB version supports wireless pairing (30.0.0+)"""
+        version = self.get_version()
+        if not version:
+            return False
+        
+        try:
+            # Parse version like "34.0.4" to compare
+            major = int(version.split('.')[0])
+            return major >= 30
+        except:
+            return False
