@@ -102,12 +102,54 @@ def register_commands(main_group):
             
             console.print(f"\n[bold]Device Information[/bold]")
             console.print(f"ID: [green]{info['id']}[/green]")
+            if info.get('device_name') and info['device_name'] != "Unknown":
+                console.print(f"Device Name: [bold cyan]{info['device_name']}[/bold cyan]")
+            console.print(f"Serial Number: [yellow]{info['serial']}[/yellow]")
             console.print(f"Manufacturer: [cyan]{info['manufacturer']}[/cyan]")
             console.print(f"Model: [cyan]{info['model']}[/cyan]")
             console.print(f"Android Version: [yellow]{info['android_version']}[/yellow]")
             console.print(f"SDK Version: [yellow]{info['sdk_version']}[/yellow]")
             console.print(f"Build Type: [magenta]{info['build_type']}[/magenta]")
             
+        except ADBError as e:
+            console.print(f"[red]Error: {e}[/red]")
+    
+    @main_group.command()
+    @click.argument('shell_command', nargs=-1, required=False)
+    @click.option('-d', '--device', help='Target device ID')
+    @click.pass_context
+    def shell(ctx, shell_command, device):
+        """Run shell commands on a device"""
+        device_manager = ctx.obj['device_manager']
+        
+        try:
+            device_id = DeviceSelector.select_single_device(device_manager, device)
+            if not device_id:
+                return
+            
+            if shell_command:
+                # Run the provided command
+                cmd = ' '.join(shell_command)
+                console.print(f"[yellow]Running on {device_id}: {cmd}[/yellow]\n")
+                
+                stdout, stderr, code = device_manager.adb._run_command(["-s", device_id, "shell", cmd])
+                
+                if stdout:
+                    console.print(stdout.rstrip())
+                if stderr:
+                    console.print(f"[red]{stderr.rstrip()}[/red]")
+                
+                if code != 0:
+                    console.print(f"\n[red]Command failed with exit code {code}[/red]")
+            else:
+                # Interactive shell
+                console.print(f"[green]Starting interactive shell on {device_id}[/green]")
+                console.print("[dim]Type 'exit' to quit[/dim]\n")
+                
+                import subprocess
+                # Use subprocess for interactive shell
+                subprocess.run([device_manager.adb.adb_path, "-s", device_id, "shell"])
+                
         except ADBError as e:
             console.print(f"[red]Error: {e}[/red]")
     
@@ -266,6 +308,23 @@ def register_commands(main_group):
             
             if code == 0 and "connected" in stdout.lower():
                 console.print(f"[green]✓ Successfully connected to {address}![/green]")
+                
+                # Try to get device info and update history with device name
+                try:
+                    # Extract device ID from address for device info
+                    device_info = device_manager.get_device_info(address)
+                    # Prefer user-defined device name, fall back to manufacturer/model
+                    device_name = device_info.get('device_name')
+                    if not device_name:
+                        device_name = f"{device_info.get('manufacturer', '')} {device_info.get('model', '')}".strip()
+                    if device_name:
+                        ip = address.split(':')[0]
+                        history.update_device_name(ip, device_name)
+                        console.print(f"[dim]Device: {device_name}[/dim]")
+                except Exception:
+                    # Ignore errors getting device info
+                    pass
+                
                 console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
             else:
                 console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
@@ -398,6 +457,22 @@ def register_commands(main_group):
                     
                     if code == 0 and "connected" in stdout.lower():
                         console.print(f"[green]✓ Successfully connected to {connect_ip}![/green]")
+                        
+                        # Try to get device info and update history with device name
+                        try:
+                            device_info = device_manager.get_device_info(connect_ip)
+                            # Prefer user-defined device name, fall back to manufacturer/model
+                            device_name = device_info.get('device_name')
+                            if not device_name:
+                                device_name = f"{device_info.get('manufacturer', '')} {device_info.get('model', '')}".strip()
+                            if device_name:
+                                ip = connect_ip.split(':')[0]
+                                history.update_device_name(ip, device_name)
+                                console.print(f"[dim]Device: {device_name}[/dim]")
+                        except Exception:
+                            # Ignore errors getting device info
+                            pass
+                        
                         console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
                     else:
                         console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")

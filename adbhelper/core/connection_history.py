@@ -180,6 +180,18 @@ class ConnectionHistory:
         
         return None
     
+    def update_device_name(self, ip: str, device_name: str):
+        """Update device name for a given IP address
+        
+        Args:
+            ip: IP address to update
+            device_name: Device name/model to set
+        """
+        for entry in self.history:
+            if entry['ip'] == ip:
+                entry['device_name'] = device_name
+        self._save_history()
+    
     def clear_history(self):
         """Clear all connection history"""
         self.history = []
