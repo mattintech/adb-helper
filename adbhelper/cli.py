@@ -123,10 +123,23 @@ def enable_adb():
     # Run the script with the current Python interpreter
     subprocess.run([sys.executable, script_path])
 
-@main.command()
+@main.group(name='add-device', invoke_without_command=True)
 @click.pass_context
 def add_device(ctx):
-    """Add another device (USB or wireless)"""
+    """Add devices via USB or wireless connection"""
+    if ctx.invoked_subcommand is None:
+        # Show available options when no subcommand is provided
+        console.print("\n[bold]Add Device Options:[/bold]\n")
+        console.print("  [cyan]adbh add-device usb[/cyan]      - Add a device via USB")
+        console.print("  [cyan]adbh add-device wireless[/cyan] - Connect to a paired device via WiFi")
+        console.print("  [cyan]adbh add-device pair[/cyan]     - Pair a new device for wireless debugging")
+        console.print("  [cyan]adbh add-device qrcode[/cyan]   - QR code pairing (experimental)\n")
+        console.print("Use [cyan]adbh add-device --help[/cyan] for more information")
+
+@add_device.command('usb')
+@click.pass_context
+def add_usb(ctx):
+    """Add a device via USB connection"""
     device_manager = ctx.obj['device_manager']
     
     # Show current devices
@@ -136,54 +149,60 @@ def add_device(ctx):
         for device in current_devices:
             console.print(f"  • {device['id']} ({device.get('model', 'Unknown')})")
     
-    console.print("\n[bold]Add Another Device[/bold]\n")
-    
-    # Import here to avoid circular imports
-    from .scripts.enable_adb_helper import guide_usb_debugging, guide_wireless_debugging
+    from .scripts.enable_adb_helper import guide_usb_debugging
     from rich.prompt import Prompt
     
-    console.print("How would you like to add the new device?\n")
-    console.print("1. [cyan]USB Connection[/cyan] (Connect another device via USB)")
-    console.print("2. [cyan]Wireless Connection[/cyan] (Add device over WiFi)\n")
+    console.print("\n[yellow]Make sure the new device is connected via USB and has USB debugging enabled[/yellow]")
+    input("Press Enter when ready...")
     
-    choice = Prompt.ask("Select an option", choices=["1", "2"], default="1")
+    # Check for new devices
+    new_devices = device_manager.list_devices()
+    new_count = len(new_devices) - len(current_devices)
     
-    if choice == "1":
-        console.print("\n[yellow]Make sure the new device is connected via USB and has USB debugging enabled[/yellow]")
-        input("Press Enter when ready...")
-        
-        # Check for new devices
-        new_devices = device_manager.list_devices()
-        new_count = len(new_devices) - len(current_devices)
-        
-        if new_count > 0:
-            console.print(f"\n[green]✓ Successfully added {new_count} new device(s)![/green]")
-            for device in new_devices:
-                if not any(d['id'] == device['id'] for d in current_devices):
-                    console.print(f"  • {device['id']} ({device.get('model', 'Unknown')})")
-        else:
-            console.print("\n[yellow]No new devices detected.[/yellow]")
-            console.print("Would you like help enabling USB debugging?")
-            if Prompt.ask("Enable USB debugging guide?", choices=["y", "n"], default="y") == "y":
-                guide_usb_debugging()
+    if new_count > 0:
+        console.print(f"\n[green]✓ Successfully added {new_count} new device(s)![/green]")
+        for device in new_devices:
+            if not any(d['id'] == device['id'] for d in current_devices):
+                console.print(f"  • {device['id']} ({device.get('model', 'Unknown')})")
     else:
-        # Wireless connection
-        console.print("\n[bold]Add Device via Wireless Debugging[/bold]\n")
+        console.print("\n[yellow]No new devices detected.[/yellow]")
+        console.print("Would you like help enabling USB debugging?")
+        if Prompt.ask("Enable USB debugging guide?", choices=["y", "n"], default="y") == "y":
+            guide_usb_debugging()
+
+@add_device.command('wireless')
+@click.argument('address', required=False)
+@click.pass_context
+def add_wireless(ctx, address):
+    """Connect to a device via wireless (already paired)"""
+    device_manager = ctx.obj['device_manager']
+    
+    try:
+        if not address:
+            from rich.prompt import Prompt
+            console.print("\n[bold]Connect to WiFi Device[/bold]\n")
+            address = Prompt.ask("Enter device address (IP:port or just IP)")
         
-        ip_port = Prompt.ask("Enter device IP address and port (e.g., 192.168.1.100:5555)")
+        # Add default port if not specified
+        if ':' not in address:
+            address = f"{address}:5555"
         
-        try:
-            stdout, stderr, code = device_manager.adb._run_command(["connect", ip_port])
+        console.print(f"\n[yellow]Connecting to {address}...[/yellow]")
+        
+        stdout, stderr, code = device_manager.adb._run_command(["connect", address])
+        
+        if code == 0 and "connected" in stdout.lower():
+            console.print(f"[green]✓ Successfully connected to {address}![/green]")
+            console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
+        else:
+            console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
+            console.print("\nTroubleshooting:")
+            console.print("• Make sure the device has wireless debugging enabled")
+            console.print("• Verify both devices are on the same network")
+            console.print("• Check if you need to pair first: [cyan]adbh add-device pair[/cyan]")
             
-            if code == 0 and "connected" in stdout:
-                console.print(f"[green]✓ Successfully connected to {ip_port}![/green]")
-            else:
-                console.print(f"[red]Failed to connect: {stderr or stdout}[/red]")
-                console.print("\nWould you like help setting up wireless debugging?")
-                if Prompt.ask("Wireless debugging guide?", choices=["y", "n"], default="y") == "y":
-                    guide_wireless_debugging()
-        except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
 
 @main.command()
 @click.option('-d', '--device', help='Device to disconnect (defaults to selection prompt)')
@@ -230,41 +249,8 @@ def disconnect(ctx, device):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
 
-@main.command()
-@click.argument('address', required=False)
-@click.pass_context
-def connect(ctx, address):
-    """Connect to a device via WiFi"""
-    device_manager = ctx.obj['device_manager']
-    
-    try:
-        if not address:
-            from rich.prompt import Prompt
-            console.print("\n[bold]Connect to WiFi Device[/bold]\n")
-            address = Prompt.ask("Enter device address (IP:port or just IP)")
-        
-        # Add default port if not specified
-        if ':' not in address:
-            address = f"{address}:5555"
-        
-        console.print(f"\n[yellow]Connecting to {address}...[/yellow]")
-        
-        stdout, stderr, code = device_manager.adb._run_command(["connect", address])
-        
-        if code == 0 and "connected" in stdout.lower():
-            console.print(f"[green]✓ Successfully connected to {address}![/green]")
-            console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
-        else:
-            console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
-            console.print("\nTroubleshooting:")
-            console.print("• Make sure the device has wireless debugging enabled")
-            console.print("• Verify both devices are on the same network")
-            console.print("• Check if you need to pair first: [cyan]adbh pair[/cyan]")
-            
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
 
-@main.command()
+@add_device.command('pair')
 @click.option('-d', '--discover', is_flag=True, help='Discover devices ready for pairing')
 @click.pass_context  
 def pair(ctx, discover):
@@ -326,7 +312,7 @@ def pair(ctx, discover):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
 
-@main.command()
+@add_device.command('qrcode')
 @click.option('--experimental', is_flag=True, help='Try experimental SPAKE2 implementation')
 def qrcode(experimental):
     """Show QR code pairing info (experimental)"""
