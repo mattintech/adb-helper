@@ -8,7 +8,7 @@ setup(
     version="0.1.0",
     author="Your Name",
     author_email="your.email@example.com",
-    description="A cross-platform ADB helper tool with tmux integration",
+    description="A cross-platform ADB helper tool for Android device management",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/adbhelper",

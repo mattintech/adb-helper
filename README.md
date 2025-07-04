@@ -1,6 +1,6 @@
 # ADB Helper
 
-A cross-platform ADB helper tool that simplifies Android device management with tmux integration for Mac/Linux and graceful degradation for Windows.
+A cross-platform ADB helper tool that simplifies Android device management.
 
 ## Features
 
@@ -8,9 +8,7 @@ A cross-platform ADB helper tool that simplifies Android device management with 
 - 🎥 Screen recording
 - 📋 Logcat management (view, save, clear)
 - 🖥️ Scrcpy integration
-- 🔧 Multi-device support (Mac/Linux/WSL)
-- 🪟 Single device support (Windows)
-- ⚡ Tmux session management
+- 🔧 Multi-device support
 - 🔍 Automatic dependency checking
 
 ## Installation
@@ -59,19 +57,17 @@ adbh scrcpy
 
 - Python 3.8+
 - ADB (Android Debug Bridge)
-- tmux (Mac/Linux/WSL only)
 - scrcpy (optional, for screen mirroring)
 
 ## Platform Support
 
 | Feature | Mac/Linux/WSL | Windows |
 |---------|---------------|---------|
-| Multi-device | ✅ | ❌ |
+| Multi-device | ✅ | ✅ |
 | Screenshot | ✅ | ✅ |
 | Recording | ✅ | ✅ |
 | Logcat | ✅ | ✅ |
 | Scrcpy | ✅ | ✅ |
-| Tmux sessions | ✅ | ❌ |
 
 ## License
 
