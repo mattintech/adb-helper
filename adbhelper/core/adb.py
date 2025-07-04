@@ -46,6 +46,26 @@ class ADBWrapper:
         except Exception as e:
             raise ADBError(f"Failed to run ADB command: {e}")
     
+    def _run_command_async(self, args: List[str], device_id: Optional[str] = None) -> subprocess.Popen:
+        """Run an ADB command asynchronously and return the process"""
+        cmd = [self.adb_path]
+        
+        if device_id:
+            cmd.extend(["-s", device_id])
+            
+        cmd.extend(args)
+        
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return process
+        except Exception as e:
+            raise ADBError(f"Failed to run ADB command: {e}")
+    
     def get_devices(self) -> List[dict]:
         """Get list of connected devices"""
         stdout, stderr, code = self._run_command(["devices", "-l"])
