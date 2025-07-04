@@ -26,7 +26,8 @@ def register_app_commands(main_group):
             console.print("  [cyan]adbh app clear[/cyan]    - Clear app data and cache")
             console.print("  [cyan]adbh app stop[/cyan]     - Force stop an application")
             console.print("  [cyan]adbh app info[/cyan]     - Show detailed app information")
-            console.print("  [cyan]adbh app backup[/cyan]   - Backup APK file(s) from device\n")
+            console.print("  [cyan]adbh app backup[/cyan]   - Backup APK file(s) from device")
+            console.print("  [cyan]adbh app current[/cyan]  - Show current foreground app\n")
             console.print("Use [cyan]adbh app --help[/cyan] for more information")
     
     @app.command('list')
@@ -546,6 +547,155 @@ def register_app_commands(main_group):
                 console.print(f"[red]Failed: {len(failed_backups)}[/red]")
                 for pkg in failed_backups:
                     console.print(f"  • {pkg}")
+                    
+        except ADBError as e:
+            console.print(f"[red]Error: {e}[/red]")
+    
+    @app.command('current')
+    @click.option('-d', '--device', help='Target device ID')
+    @click.option('-w', '--watch', is_flag=True, help='Watch for app changes')
+    @click.option('-i', '--interval', default=1, help='Watch interval in seconds')
+    @click.pass_context
+    def app_current(ctx, device, watch, interval):
+        """Show the current foreground app"""
+        device_manager = ctx.obj['device_manager']
+        
+        try:
+            device_id = DeviceSelector.select_single_device(device_manager, device)
+            if not device_id:
+                return
+            
+            def get_current_app():
+                """Get current foreground app using multiple methods for compatibility"""
+                
+                # Method 1: Try using dumpsys window (works on most Android versions)
+                stdout, _, code = device_manager.adb._run_command(
+                    ["-s", device_id, "shell", "dumpsys", "window", "windows", "|", "grep", "-E", "'mCurrentFocus|mFocusedApp'"]
+                )
+                
+                if code == 0 and stdout:
+                    # Parse mCurrentFocus or mFocusedApp
+                    for line in stdout.split('\n'):
+                        if 'mCurrentFocus=' in line or 'mFocusedApp=' in line:
+                            # Extract package/activity from lines like:
+                            # mCurrentFocus=Window{... com.example.app/com.example.app.MainActivity}
+                            match = re.search(r'(\w+\.[\w\.]+)/(\w+\.[\w\.]+)', line)
+                            if match:
+                                return match.group(1), match.group(2)
+                            # Sometimes it's just the package
+                            match = re.search(r'(\w+\.[\w\.]+)}', line)
+                            if match:
+                                return match.group(1), None
+                
+                # Method 2: Try using dumpsys activity (for older Android versions)
+                stdout, _, code = device_manager.adb._run_command(
+                    ["-s", device_id, "shell", "dumpsys", "activity", "recents", "|", "grep", "'Recent #0'", "-A", "1"]
+                )
+                
+                if code == 0 and stdout:
+                    match = re.search(r'(\w+\.[\w\.]+)/(\w+\.[\w\.]+)', stdout)
+                    if match:
+                        return match.group(1), match.group(2)
+                
+                # Method 3: Try using dumpsys window displays (newer Android)
+                stdout, _, code = device_manager.adb._run_command(
+                    ["-s", device_id, "shell", "dumpsys", "window", "displays", "|", "grep", "'mCurrentFocus'"]
+                )
+                
+                if code == 0 and stdout:
+                    match = re.search(r'(\w+\.[\w\.]+)/(\w+\.[\w\.]+)', stdout)
+                    if match:
+                        return match.group(1), match.group(2)
+                
+                # Method 4: Try using dumpsys activity activities (most reliable fallback)
+                stdout, _, code = device_manager.adb._run_command(
+                    ["-s", device_id, "shell", "dumpsys", "activity", "activities", "|", "grep", "mResumedActivity"]
+                )
+                
+                if code == 0 and stdout:
+                    match = re.search(r'(\w+\.[\w\.]+)/(\w+\.[\w\.]+)', stdout)
+                    if match:
+                        return match.group(1), match.group(2)
+                
+                return None, None
+            
+            def get_app_name(package):
+                """Get the friendly app name for a package"""
+                if not package:
+                    return "Unknown"
+                
+                # Try to get app label
+                stdout, _, _ = device_manager.adb._run_command(
+                    ["-s", device_id, "shell", "dumpsys", "package", package, "|", "grep", "applicationLabel="]
+                )
+                
+                if stdout:
+                    match = re.search(r'applicationLabel=(.*)', stdout)
+                    if match:
+                        label = match.group(1).strip()
+                        if label and label != "null":
+                            return label
+                
+                # Fallback to package name
+                return package
+            
+            if watch:
+                console.print(f"[yellow]Watching for app changes (interval: {interval}s, press Ctrl+C to stop)...[/yellow]\n")
+                
+                last_package = None
+                import time
+                
+                try:
+                    while True:
+                        package, activity = get_current_app()
+                        
+                        if package != last_package:
+                            if package:
+                                app_name = get_app_name(package)
+                                timestamp = datetime.now().strftime("%H:%M:%S")
+                                
+                                console.print(f"[dim]{timestamp}[/dim] [bold green]{app_name}[/bold green]")
+                                console.print(f"  Package:  [cyan]{package}[/cyan]")
+                                if activity:
+                                    console.print(f"  Activity: [yellow]{activity}[/yellow]")
+                                console.print()
+                                
+                                last_package = package
+                            else:
+                                if last_package is not None:
+                                    timestamp = datetime.now().strftime("%H:%M:%S")
+                                    console.print(f"[dim]{timestamp}[/dim] [red]No app in foreground[/red]\n")
+                                    last_package = None
+                        
+                        time.sleep(interval)
+                        
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Stopped watching[/yellow]")
+            else:
+                # One-time check
+                package, activity = get_current_app()
+                
+                if package:
+                    app_name = get_app_name(package)
+                    
+                    console.print(f"\n[bold]Current Foreground App[/bold]")
+                    console.print(f"App Name:  [bold green]{app_name}[/bold green]")
+                    console.print(f"Package:   [cyan]{package}[/cyan]")
+                    if activity:
+                        console.print(f"Activity:  [yellow]{activity}[/yellow]")
+                    
+                    # Get additional info
+                    info_stdout, _, _ = device_manager.adb._run_command(
+                        ["-s", device_id, "shell", "dumpsys", "package", package, "|", "grep", "versionName="]
+                    )
+                    
+                    if info_stdout:
+                        version_match = re.search(r'versionName=([\S]+)', info_stdout)
+                        if version_match:
+                            console.print(f"Version:   [magenta]{version_match.group(1)}[/magenta]")
+                else:
+                    console.print("[red]Could not determine current foreground app[/red]")
+                    console.print("[dim]The device may be on the home screen or locked[/dim]")
                     
         except ADBError as e:
             console.print(f"[red]Error: {e}[/red]")
