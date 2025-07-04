@@ -264,10 +264,24 @@ def register_commands(main_group):
                 history.add_connection(address, connection_type="wireless")
             else:
                 console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
+                
+                # Check if it's a connection refused error suggesting pairing is needed
+                if "refused" in (stderr or stdout).lower() or "failed" in (stderr or stdout).lower():
+                    console.print("\n[yellow]The device may need to be paired first.[/yellow]")
+                    
+                    if Prompt.ask("Would you like to pair the device now?", choices=["y", "n"], default="y") == "y":
+                        # Extract IP from address
+                        ip = address.split(':')[0]
+                        console.print(f"\n[cyan]Starting pairing process for {ip}...[/cyan]\n")
+                        
+                        # Call the pair function directly
+                        ctx.invoke(pair, address=ip, pairing_code=None, discover=False)
+                        return
+                
                 console.print("\nTroubleshooting:")
                 console.print("• Make sure the device has wireless debugging enabled")
                 console.print("• Verify both devices are on the same network")
-                console.print("• Check if you need to pair first: [cyan]adbh add-device pair[/cyan]")
+                console.print("• Try pairing first: [cyan]adbh add-device pair[/cyan]")
                 
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
