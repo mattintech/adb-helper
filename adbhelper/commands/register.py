@@ -14,6 +14,7 @@ from ..core.adb import ADBWrapper, ADBError
 from ..core.device import DeviceManager
 from ..core.pairing import WiFiPairing
 from ..core.mdns_discovery import MDNSDiscovery
+from ..core.connection_history import ConnectionHistory
 from .utils import DeviceSelector
 
 console = Console()
@@ -215,9 +216,38 @@ def register_commands(main_group):
         device_manager = ctx.obj['device_manager']
         
         try:
+            history = ConnectionHistory()
+            
             if not address:
                 console.print("\n[bold]Connect to WiFi Device[/bold]\n")
-                address = Prompt.ask("Enter device address (IP:port or just IP)")
+                
+                # Show history and let user select
+                selected = history.display_history_selection(connection_type="wireless")
+                
+                if selected == "NEW" or selected is None:
+                    # Get subnet suggestion
+                    subnet = ConnectionHistory.get_local_subnet()
+                    if subnet:
+                        console.print(f"[dim]Detected local network: {subnet}x[/dim]")
+                        address = Prompt.ask("Enter device address (IP:port or just IP)", 
+                                           default=subnet)
+                        
+                        # If user entered just the last octet(s), prepend the subnet
+                        if address and '.' not in address:
+                            address = subnet + address
+                        elif address and address.count('.') < 3:
+                            # Handle partial IPs
+                            if address.startswith(subnet):
+                                # User typed the full thing
+                                pass
+                            else:
+                                # User typed partial, prepend subnet
+                                address = subnet + address
+                    else:
+                        address = Prompt.ask("Enter device address (IP:port or just IP)")
+                else:
+                    address = selected
+                    console.print(f"[green]Using {address} from history[/green]")
             
             if ':' not in address:
                 address = f"{address}:5555"
@@ -229,6 +259,9 @@ def register_commands(main_group):
             if code == 0 and "connected" in stdout.lower():
                 console.print(f"[green]✓ Successfully connected to {address}![/green]")
                 console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
+                
+                # Save to history
+                history.add_connection(address, connection_type="wireless")
             else:
                 console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
                 console.print("\nTroubleshooting:")
@@ -250,6 +283,7 @@ def register_commands(main_group):
         
         try:
             pairing = WiFiPairing(device_manager.adb)
+            history = ConnectionHistory()
             
             if discover:
                 discovery = MDNSDiscovery()
@@ -279,9 +313,35 @@ def register_commands(main_group):
             console.print("2. Tap 'Pair device with pairing code'")
             console.print("3. Note the IP address, port, and 6-digit code shown\n")
             
-            # If no address provided at all, ask for it
+            # If no address provided at all, check history or ask for it
             if not ip_port:
-                ip_port = Prompt.ask("Enter the pairing address (IP:port or just IP)")
+                # Show history and let user select
+                selected = history.display_history_selection(connection_type="pairing")
+                
+                if selected == "NEW" or selected is None:
+                    # Get subnet suggestion
+                    subnet = ConnectionHistory.get_local_subnet()
+                    if subnet:
+                        console.print(f"[dim]Detected local network: {subnet}x[/dim]")
+                        ip_port = Prompt.ask("Enter the pairing address (IP:port or just IP)", 
+                                           default=subnet)
+                        
+                        # If user entered just the last octet(s), prepend the subnet
+                        if ip_port and '.' not in ip_port:
+                            ip_port = subnet + ip_port
+                        elif ip_port and ip_port.count('.') < 3:
+                            # Handle partial IPs like "100.143" when subnet is "172.16."
+                            if ip_port.startswith(subnet):
+                                # User typed the full thing
+                                pass
+                            else:
+                                # User typed partial, prepend subnet
+                                ip_port = subnet + ip_port
+                    else:
+                        ip_port = Prompt.ask("Enter the pairing address (IP:port or just IP)")
+                else:
+                    ip_port = selected
+                    console.print(f"[green]Using {ip_port} from history[/green]")
             
             # If IP provided without port, ask for port
             if ':' not in ip_port:
@@ -299,6 +359,9 @@ def register_commands(main_group):
             if success:
                 console.print(f"[green]✓ Successfully paired![/green]")
                 
+                # Save to history
+                history.add_connection(ip_port, connection_type="pairing")
+                
                 # Ask if user wants to connect now
                 if Prompt.ask("\nConnect to the device now?", choices=["y", "n"], default="y") == "y":
                     console.print("\n[bold]Note:[/bold] The connection port is different from the pairing port.")
@@ -314,6 +377,9 @@ def register_commands(main_group):
                     if code == 0 and "connected" in stdout.lower():
                         console.print(f"[green]✓ Successfully connected to {connect_ip}![/green]")
                         console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
+                        
+                        # Save wireless connection to history too
+                        history.add_connection(connect_ip, connection_type="wireless")
                     else:
                         console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
                         console.print(f"\nYou can try connecting manually with:")
