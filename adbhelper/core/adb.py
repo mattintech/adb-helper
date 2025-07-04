@@ -71,8 +71,17 @@ class ADBWrapper:
                     "status": status,
                     "model": None,
                     "device": None,
-                    "transport_id": None
+                    "transport_id": None,
+                    "transport_type": None
                 }
+                
+                # Determine transport type based on device ID format
+                if ':' in device_id and '.' in device_id:
+                    # IP:port format indicates WiFi connection
+                    device_info["transport_type"] = "WiFi"
+                else:
+                    # Otherwise it's USB
+                    device_info["transport_type"] = "USB"
                 
                 # Extract additional properties
                 for part in parts[2:]:

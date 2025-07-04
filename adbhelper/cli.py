@@ -75,7 +75,7 @@ def devices(ctx):
                 device["id"],
                 device["status"],
                 device.get("model", "Unknown"),
-                device.get("transport_id", "N/A")
+                device.get("transport_type", "N/A")
             )
         
         console.print(table)
