@@ -116,38 +116,98 @@ def register_commands(main_group):
     
     @main_group.command()
     @click.argument('shell_command', nargs=-1, required=False)
-    @click.option('-d', '--device', help='Target device ID')
+    @click.option('-d', '--device', help='Target specific device ID')
+    @click.option('-a', '--all', 'all_devices', is_flag=True, help='Run on all connected devices')
+    @click.option('-m', '--multi', is_flag=True, help='Select multiple devices interactively')
     @click.pass_context
-    def shell(ctx, shell_command, device):
-        """Run shell commands on a device"""
+    def shell(ctx, shell_command, device, all_devices, multi):
+        """Run shell commands on one or more devices"""
         device_manager = ctx.obj['device_manager']
         
         try:
-            device_id = DeviceSelector.select_single_device(device_manager, device)
-            if not device_id:
+            devices = device_manager.list_devices()
+            if not devices:
+                console.print("[yellow]No devices connected[/yellow]")
                 return
             
-            if shell_command:
-                # Run the provided command
-                cmd = ' '.join(shell_command)
-                console.print(f"[yellow]Running on {device_id}: {cmd}[/yellow]\n")
+            # Determine which devices to use
+            target_devices = []
+            
+            if all_devices:
+                # Use all connected devices
+                target_devices = [d['id'] for d in devices if d['status'] == 'device']
+                console.print(f"[cyan]Running on all {len(target_devices)} devices[/cyan]")
+            elif multi:
+                # Let user select multiple devices
+                console.print("[bold]Select devices (space to toggle, enter to confirm):[/bold]")
                 
-                stdout, stderr, code = device_manager.adb._run_command(["-s", device_id, "shell", cmd])
+                # Show devices with checkboxes
+                from rich.prompt import Prompt
+                table = Table(show_header=True)
+                table.add_column("#", style="cyan", width=3)
+                table.add_column("Device ID", style="green")
+                table.add_column("Model", style="yellow")
                 
-                if stdout:
-                    console.print(stdout.rstrip())
-                if stderr:
-                    console.print(f"[red]{stderr.rstrip()}[/red]")
+                for idx, device in enumerate(devices, 1):
+                    if device['status'] == 'device':
+                        table.add_row(
+                            str(idx),
+                            device['id'],
+                            device.get('model', 'Unknown')
+                        )
                 
-                if code != 0:
-                    console.print(f"\n[red]Command failed with exit code {code}[/red]")
+                console.print(table)
+                
+                # Get comma-separated list of device numbers
+                selection = Prompt.ask("Enter device numbers (comma-separated, e.g., 1,3,4)")
+                selected_indices = [int(x.strip()) - 1 for x in selection.split(',') if x.strip().isdigit()]
+                
+                for idx in selected_indices:
+                    if 0 <= idx < len(devices):
+                        target_devices.append(devices[idx]['id'])
+                
+                if not target_devices:
+                    console.print("[yellow]No devices selected[/yellow]")
+                    return
             else:
-                # Interactive shell
+                # Single device
+                device_id = DeviceSelector.select_single_device(device_manager, device)
+                if not device_id:
+                    return
+                target_devices = [device_id]
+            
+            if shell_command:
+                # Run the provided command on all target devices
+                cmd = ' '.join(shell_command)
+                
+                for device_id in target_devices:
+                    console.print(f"\n[bold cyan]━━━ {device_id} ━━━[/bold cyan]")
+                    console.print(f"[yellow]Running: {cmd}[/yellow]")
+                    
+                    stdout, stderr, code = device_manager.adb._run_command(["-s", device_id, "shell", cmd])
+                    
+                    if stdout:
+                        console.print(stdout.rstrip())
+                    if stderr:
+                        console.print(f"[red]{stderr.rstrip()}[/red]")
+                    
+                    if code != 0:
+                        console.print(f"[red]Command failed with exit code {code}[/red]")
+                
+                if len(target_devices) > 1:
+                    console.print(f"\n[green]✓ Completed on {len(target_devices)} devices[/green]")
+            else:
+                # Interactive shell only works with single device
+                if len(target_devices) > 1:
+                    console.print("[red]Interactive shell only supports single device[/red]")
+                    console.print("Use -d flag to select a specific device")
+                    return
+                
+                device_id = target_devices[0]
                 console.print(f"[green]Starting interactive shell on {device_id}[/green]")
                 console.print("[dim]Type 'exit' to quit[/dim]\n")
                 
                 import subprocess
-                # Use subprocess for interactive shell
                 subprocess.run([device_manager.adb.adb_path, "-s", device_id, "shell"])
                 
         except ADBError as e:
