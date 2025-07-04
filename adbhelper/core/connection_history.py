@@ -133,12 +133,10 @@ class ConnectionHistory:
         Returns:
             Selected address or None if cancelled
         """
-        # For pairing, we want to show all history (both pairing and wireless)
-        # since the same device can be used for both
-        if connection_type == "pairing":
-            history = self.history  # Show all history
-        else:
-            history = self.get_history(connection_type)
+        # Show all history for both pairing and wireless since you often
+        # pair first then connect, or connect to previously paired devices
+        # connection_type parameter kept for API compatibility but not used
+        history = self.history  # Always show all history
         
         if not history and not show_new_option:
             return None

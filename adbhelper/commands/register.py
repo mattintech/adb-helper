@@ -250,18 +250,23 @@ def register_commands(main_group):
                     console.print(f"[green]Using {address} from history[/green]")
             
             if ':' not in address:
-                address = f"{address}:5555"
+                # Ask for port instead of defaulting to 5555
+                console.print("\n[bold]Note:[/bold] The wireless debugging port may vary.")
+                console.print("Check your device's Wireless debugging screen for the port.\n")
+                
+                port = Prompt.ask("Enter the wireless debugging port", default="5555")
+                address = f"{address}:{port}"
             
             console.print(f"\n[yellow]Connecting to {address}...[/yellow]")
             
             stdout, stderr, code = device_manager.adb._run_command(["connect", address])
             
+            # Save to history regardless of success/failure (so user can retry easily)
+            history.add_connection(address, connection_type="wireless")
+            
             if code == 0 and "connected" in stdout.lower():
                 console.print(f"[green]✓ Successfully connected to {address}![/green]")
                 console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
-                
-                # Save to history
-                history.add_connection(address, connection_type="wireless")
             else:
                 console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
                 
@@ -388,12 +393,12 @@ def register_commands(main_group):
                     
                     stdout, stderr, code = device_manager.adb._run_command(["connect", connect_ip])
                     
+                    # Save wireless connection to history regardless of success
+                    history.add_connection(connect_ip, connection_type="wireless")
+                    
                     if code == 0 and "connected" in stdout.lower():
                         console.print(f"[green]✓ Successfully connected to {connect_ip}![/green]")
                         console.print("\nRun [cyan]adbh devices[/cyan] to see connected devices")
-                        
-                        # Save wireless connection to history too
-                        history.add_connection(connect_ip, connection_type="wireless")
                     else:
                         console.print(f"[red]✗ Failed to connect: {stderr or stdout}[/red]")
                         console.print(f"\nYou can try connecting manually with:")
