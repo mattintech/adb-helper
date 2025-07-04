@@ -42,7 +42,7 @@ A powerful cross-platform ADB (Android Debug Bridge) helper tool that simplifies
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/adbhelper.git
+git clone https://github.com/mattintech/adb-helper.git
 cd adbhelper
 
 # Create virtual environment
