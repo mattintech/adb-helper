@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adbh"
+version = "0.1.1"
+description = "A cross-platform ADB helper tool for Android device management"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    {name = "Your Name", email = "mattintech@gmail.com"},
+]
+maintainers = [
+    {name = "Your Name", email = "mattintech@gmail.com"},
+]
+keywords = ["adb", "android", "debugging", "development", "tools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: System :: Shells",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "psutil>=5.9.0",
+    "watchdog>=3.0.0",
+    "qrcode[pil]>=7.4.0",
+    "zeroconf>=0.131.0",
+    "spake2>=0.8",
+    "cryptography>=41.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mattintech/adbhelper"
+Documentation = "https://github.com/mattintech/adbhelper#readme"
+Repository = "https://github.com/mattintech/adbhelper.git"
+"Bug Tracker" = "https://github.com/mattintech/adbhelper/issues"
+
+[project.scripts]
+adbhelper = "adbhelper.cli:main"
+adbh = "adbhelper.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["adbhelper*"]
+exclude = ["tests*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = ["E", "F", "W", "C90", "I", "N", "UP", "B", "A", "C4", "PT", "SIM", "RUF"]
+ignore = ["E501", "N802", "N803", "N806"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

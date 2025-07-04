@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include requirements.txt
+recursive-include adbhelper *.py
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+prune venv
+prune test-env
+prune .git
+prune .github
+prune tests
+prune screenshots
