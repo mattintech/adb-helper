@@ -32,6 +32,10 @@ setup(
         "pyyaml>=6.0",
         "psutil>=5.9.0",
         "watchdog>=3.0.0",
+        "qrcode[pil]>=7.4.0",
+        "zeroconf>=0.131.0",
+        "spake2>=0.8",
+        "cryptography>=41.0.0",
     ],
     entry_points={
         "console_scripts": [
